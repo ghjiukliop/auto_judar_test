@@ -16,6 +16,20 @@ local function isInTargetGame()
     return game.PlaceId == GAME_ID
 end
 
+-- Function to stop execution immediately if in target game
+local function stopIfInTargetGame()
+    if isInTargetGame() then
+        warn("Player is in game ID 14229762361. Stopping all functions.")
+        return true
+    end
+    return false
+end
+
+-- Stop execution immediately if in the target game
+if stopIfInTargetGame() then
+    return
+end
+
 -- Function to load team loadout
 local function loadTeamLoadout(loadout)
     ReplicatedStorage.endpoints.client_to_server.load_team_loadout:InvokeServer(tostring(loadout))
@@ -129,32 +143,21 @@ local function upgradeJudars()
 end
 
 -- Main execution logic
-if isInTargetGame() then
-    loadTeamLoadout(1)
-    print("Selected team loadout 1 for the target game.")
-else
-    loadTeamLoadout(6)
-    print("Selected team loadout 6 for non-target game.")
+loadTeamLoadout(6)
+print("Selected team loadout 6 for non-target game.")
 
-    saveFilteredJudarData()
+saveFilteredJudarData()
 
-    local bestJudarUUID = getBestJudarUUID()
-    if bestJudarUUID then
-        equipUnit(bestJudarUUID)
-        print("Equipped best Judar with UUID: " .. bestJudarUUID)
-    else
-        warn("No suitable Judar found!")
-        return
-    end
-end
-
--- Place and upgrade Judars in a loop
 local bestJudarUUID = getBestJudarUUID()
-if not bestJudarUUID then
-    warn("No saved Judar UUID found in JSON!")
+if bestJudarUUID then
+    equipUnit(bestJudarUUID)
+    print("Equipped best Judar with UUID: " .. bestJudarUUID)
+else
+    warn("No suitable Judar found!")
     return
 end
 
+-- Place and upgrade Judars in a loop
 equipUnit(bestJudarUUID)
 print("Equipped Judar with UUID:", bestJudarUUID)
 
