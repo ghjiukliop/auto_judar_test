@@ -31,7 +31,7 @@ local function getUnitsOwner()
     return ItemInventoryServiceClient["session"]["collection"]["collection_profile_data"]["owned_units"]
 end
 
--- Function to log Judar's UUID and total takedowns
+-- Function to log and return Judar's UUID and total takedowns
 local function logJudarInfo()
     local judarData = {}
 
@@ -57,15 +57,22 @@ local function saveFilteredJudarData()
     createJsonFile(JUDAR_JSON_FILE, judarData)
 end
 
--- Function to fetch saved Judar UUID from JSON
-local function getSavedJudarUUID()
+-- Function to get the best Judar (highest takedowns but below 10K)
+local function getBestJudarUUID()
     if isfile(JUDAR_JSON_FILE) then
         local data = readfile(JUDAR_JSON_FILE)
         local judarList = HttpService:JSONDecode(data) or {}
 
-        if #judarList > 0 then
-            return judarList[1].uuid
+        local bestJudar = nil
+        for _, judar in ipairs(judarList) do
+            if judar.total_takedowns < 10000 then
+                if not bestJudar or judar.total_takedowns > bestJudar.total_takedowns then
+                    bestJudar = judar
+                end
+            end
         end
+
+        return bestJudar and bestJudar.uuid or nil
     end
     return nil
 end
@@ -128,34 +135,33 @@ if isInTargetGame() then
 else
     loadTeamLoadout(6)
     print("Selected team loadout 6 for non-target game.")
-    
+
     saveFilteredJudarData()
 
-    local judarData = readfile(JUDAR_JSON_FILE)
-    local decodedData = HttpService:JSONDecode(judarData) or {}
-    for _, judar in ipairs(decodedData) do
-        if judar.total_takedowns < 10000 then
-            equipUnit(judar.uuid)
-            print("Equipped Judar with UUID: " .. judar.uuid)
-            break
-        end
+    local bestJudarUUID = getBestJudarUUID()
+    if bestJudarUUID then
+        equipUnit(bestJudarUUID)
+        print("Equipped best Judar with UUID: " .. bestJudarUUID)
+    else
+        warn("No suitable Judar found!")
+        return
     end
 end
 
 -- Place and upgrade Judars in a loop
-local judarUUID = getSavedJudarUUID()
-if not judarUUID then
+local bestJudarUUID = getBestJudarUUID()
+if not bestJudarUUID then
     warn("No saved Judar UUID found in JSON!")
     return
 end
 
-equipUnit(judarUUID)
-print("Equipped Judar with UUID:", judarUUID)
+equipUnit(bestJudarUUID)
+print("Equipped Judar with UUID:", bestJudarUUID)
 
 local basePosition = getLaneMidpoint()
 
 while true do
-    placeJudars(basePosition, judarUUID)
+    placeJudars(basePosition, bestJudarUUID)
     task.wait(2)
     upgradeJudars()
     task.wait(3)
