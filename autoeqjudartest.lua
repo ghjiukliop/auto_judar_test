@@ -1,171 +1,135 @@
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
 local LOCAL_PLAYER = Players.LocalPlayer
 local GAME_ID = 14229762361
 local JUDAR_JSON_FILE = "JudarData.json"
+local UNIT_STORAGE = workspace:FindFirstChild("_UNITS")
 
-local Loader = require(game:GetService('ReplicatedStorage').src.Loader)
+-- Load services
+local Loader = require(ReplicatedStorage.src.Loader)
 local ItemInventoryServiceClient = Loader.load_client_service(script, "ItemInventoryServiceClient")
-
--- Function to check if player is in the target game
-local function isInTargetGame()
-    return game.PlaceId == GAME_ID
-end
 
 -- Function to load team loadout
 local function loadTeamLoadout(loadout)
-    local args = {[1] = tostring(loadout)}
-    ReplicatedStorage.endpoints.client_to_server.load_team_loadout:InvokeServer(unpack(args))
+    ReplicatedStorage.endpoints.client_to_server.load_team_loadout:InvokeServer(tostring(loadout))
 end
 
--- Function to equip a unit by UUID
-local function equipUnit(uuid)
-    local args = {[1] = uuid}
-    ReplicatedStorage.endpoints.client_to_server.equip_unit:InvokeServer(unpack(args))
-end
-
--- Function to get the units owned by the player
-local function getUnitsOwner()
-    return ItemInventoryServiceClient["session"]["collection"]["collection_profile_data"]["owned_units"]
-end
-
--- Function to log Judar's UUID and total takedowns
-local function logJudarInfo()
-    local judarData = {}
-    for _, unit in pairs(getUnitsOwner()) do
-        if unit["unit_id"]:lower() == "judar" then
-            local takedowns = unit["total_takedowns"] or 0
-            local uuid = unit["uuid"]
-            table.insert(judarData, { uuid = uuid, total_takedowns = takedowns })
-        end
-    end
-    return judarData
-end
-
--- Function to create a JSON file
-local function createJsonFile(fileName, jsonData)
-    local jsonString = HttpService:JSONEncode(jsonData)
-    writefile(fileName, jsonString)
-end
-
--- Function to save filtered Judar data
-local function saveFilteredJudarData()
-    local judarData = logJudarInfo()
-    createJsonFile(JUDAR_JSON_FILE, judarData)
-end
-
--- Function to auto-equip Judar
-local function autoEquipJudar()
-    if isfile(JUDAR_JSON_FILE) then
-        local judarData = readfile(JUDAR_JSON_FILE)
-        local decodedData = HttpService:JSONDecode(judarData) or {}
-        
-        for _, judar in ipairs(decodedData) do
-            if judar.total_takedowns < 10000 then
-                equipUnit(judar.uuid)
-                break
-            end
-        end
-    end
-end
-
--- Function to create a glow effect on a part
-local function createGlowEffect(part, color)
-    local surfaceGui = Instance.new("SurfaceGui")
-    surfaceGui.Adornee = part
-    surfaceGui.Face = Enum.NormalId.Top
-    surfaceGui.AlwaysOnTop = true
-
-    local glowFrame = Instance.new("Frame")
-    glowFrame.Size = UDim2.new(1, 0, 1, 0)
-    glowFrame.BackgroundColor3 = color
-    glowFrame.BackgroundTransparency = 0.5
-
-    glowFrame.Parent = surfaceGui
-    surfaceGui.Parent = part
-end
-
--- Function to find the closest object at 50% distance
-local function findHalfwayObject()
-    local lane = workspace._BASES.pve.LANES["1"]
-    local spawn = lane.spawn
-    local final = lane.final
-    local spawnPosition = spawn.Position
-    local finalPosition = final.Position
-    local totalDistance = (finalPosition - spawnPosition).magnitude
-    local targetDistance = 0.5 * totalDistance
-    
-    local closestPart = nil
-    local closestDistance = math.huge
-    
-    for _, part in ipairs(lane:GetChildren()) do
-        if part:IsA("BasePart") then
-            local partDistance = (part.Position - spawnPosition).magnitude
-            local distanceDiff = math.abs(partDistance - targetDistance)
-            
-            if distanceDiff < closestDistance then
-                closestDistance = distanceDiff
-                closestPart = part
-            end
-        end
-    end
-    
-    if closestPart then
-        createGlowEffect(closestPart, Color3.new(1, 1, 0))
-    end
-    
-    return closestPart
-end
-
--- Function to place Judar at 50% location
-local function placeJudarNearTarget()
-    local targetPart = findHalfwayObject()
-    if targetPart then
-        ReplicatedStorage.endpoints.client_to_server.place_unit:InvokeServer(targetPart.Position)
-    end
-end
-
--- Function to check for Judar and auto-place if missing
-local function checkAndPlaceJudar()
-    while true do
-        if not workspace._UNITS:FindFirstChild("judar") then
-            placeJudarNearTarget()
-        end
-        wait(1) -- Adjust as needed
-    end
-end
-
--- Function to upgrade Judar when there are 3 in workspace._UNITS
-local function autoUpgradeJudar()
-    while true do
-        local judars = {}
-        for _, unit in ipairs(workspace._UNITS:GetChildren()) do
-            if unit.Name == "judar" then
-                table.insert(judars, unit)
-            end
-        end
-
-        if #judars >= 3 then
-            for _, judar in ipairs(judars) do
-                local args = {[1] = judar}
-                ReplicatedStorage.endpoints.client_to_server.upgrade_unit_ingame:InvokeServer(unpack(args))
-                wait(1)
-            end
-        end
-        wait(2)
-    end
-end
-
--- Main execution logic
-if isInTargetGame() then
+-- **Step 1: Check Game ID & Load Team**
+if game.PlaceId == GAME_ID then
     loadTeamLoadout(1)
+    print("Loaded Team 1 for target game.")
+    return
 else
     loadTeamLoadout(6)
-    saveFilteredJudarData()
-    autoEquipJudar()
+    print("Loaded Team 6 for non-target game.")
 end
 
-spawn(checkAndPlaceJudar)
-spawn(autoUpgradeJudar)
+-- **Step 2: Fetch and Save All Judar Data to JSON**
+local function getUnitsOwner()
+    return ItemInventoryServiceClient.session.collection.collection_profile_data.owned_units
+end
+
+local function saveJudarData()
+    local judarData = {}
+
+    for _, unit in pairs(getUnitsOwner()) do
+        if unit.unit_id:lower() == "judar" then
+            table.insert(judarData, { uuid = unit.uuid, total_takedowns = unit.total_takedowns or 0 })
+        end
+    end
+
+    local jsonString = HttpService:JSONEncode(judarData)
+    writefile(JUDAR_JSON_FILE, jsonString)
+    print("Saved Judar data to JSON:", JUDAR_JSON_FILE)
+end
+
+saveJudarData()
+
+-- **Step 3: Auto-Equip a Judar with <10K Takedowns**
+local function autoEquipJudar()
+    if isfile(JUDAR_JSON_FILE) then
+        local data = readfile(JUDAR_JSON_FILE)
+        local judarList = HttpService:JSONDecode(data) or {}
+
+        for _, judar in ipairs(judarList) do
+            if judar.total_takedowns < 10000 then
+                ReplicatedStorage.endpoints.client_to_server.equip_unit:InvokeServer(judar.uuid)
+                print("Equipped Judar with UUID:", judar.uuid)
+                break -- Equip only one
+            end
+        end
+    else
+        warn("Judar JSON file not found! Skipping auto-equip.")
+    end
+end
+
+autoEquipJudar()
+
+-- **Step 4: Find the Closest Object Near 50% Along the Lane**
+local function getLaneMidpoint()
+    local lane = workspace._BASES.pve.LANES["1"]
+    local spawnPos = lane.spawn.Position
+    local finalPos = lane.final.Position
+    local totalDist = (finalPos - spawnPos).magnitude
+    local midpoint = spawnPos + (finalPos - spawnPos).unit * (0.5 * totalDist)
+
+    local closestObject, closestDist = nil, math.huge
+    for _, obj in ipairs(lane:GetChildren()) do
+        if obj:IsA("BasePart") then
+            local dist = (obj.Position - midpoint).magnitude
+            if dist < closestDist then
+                closestDist = dist
+                closestObject = obj
+            end
+        end
+    end
+
+    return closestObject and closestObject.Position or midpoint
+end
+
+local targetPosition = getLaneMidpoint()
+
+-- **Step 5: Place Judar Near 50% Mark (Avoid Overlapping)**
+local function placeJudar()
+    if not UNIT_STORAGE or UNIT_STORAGE:FindFirstChild("judar") then return end
+
+    local placementOffset = Vector3.new(math.random(-3, 3), 0, math.random(-3, 3))
+    local placeArgs = { targetPosition + placementOffset }
+    ReplicatedStorage.endpoints.client_to_server.spawn_unit:InvokeServer(unpack(placeArgs))
+
+    print("Placed Judar near 50% mark!")
+end
+
+-- **Step 6: Auto-Upgrade Judar When 3 Exist**
+local function upgradeJudar()
+    if UNIT_STORAGE then
+        local judarUnits = {}
+        for _, unit in ipairs(UNIT_STORAGE:GetChildren()) do
+            if unit.Name == "judar" then
+                table.insert(judarUnits, unit)
+            end
+        end
+
+        if #judarUnits >= 3 then
+            for _, judar in ipairs(judarUnits) do
+                local args = { judar }
+                ReplicatedStorage.endpoints.client_to_server.upgrade_unit_ingame:InvokeServer(unpack(args))
+                print("Upgraded Judar:", judar)
+            end
+        end
+    end
+end
+
+-- **Step 7: Loop to Ensure Judar Placement and Upgrades**
+while true do
+    task.wait(2) -- Prevents lag
+
+    -- Ensure a Judar is placed if missing
+    if UNIT_STORAGE and not UNIT_STORAGE:FindFirstChild("judar") then
+        placeJudar()
+    end
+
+    -- Upgrade if at least 3 Judars exist
+    upgradeJudar()
+end
