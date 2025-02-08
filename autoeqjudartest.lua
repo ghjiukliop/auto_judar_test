@@ -15,6 +15,12 @@ repeat
     ItemInventoryServiceClient = Loader.load_client_service(script, "ItemInventoryServiceClient")
 until ItemInventoryServiceClient
 
+if not ItemInventoryServiceClient then
+    error("Failed to load ItemInventoryServiceClient!")
+end
+
+print("ItemInventoryServiceClient loaded successfully.")
+
 -- **Check if Player is in the Target Game**
 local function isInTargetGame()
     return game.PlaceId == GAME_ID
