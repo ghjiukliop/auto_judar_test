@@ -16,23 +16,17 @@ local function isInTargetGame()
     return game.PlaceId == GAME_ID
 end
 
--- Function to stop execution immediately if in target game
-local function stopIfInTargetGame()
-    if isInTargetGame() then
-        warn("Player is in game ID 14229762361. Stopping all functions.")
-        return true
-    end
-    return false
-end
-
--- Stop execution immediately if in the target game
-if stopIfInTargetGame() then
-    return
-end
-
 -- Function to load team loadout
 local function loadTeamLoadout(loadout)
     ReplicatedStorage.endpoints.client_to_server.load_team_loadout:InvokeServer(tostring(loadout))
+    print("Switched to loadout:", loadout)
+end
+
+-- Check if the player is in the target game
+if isInTargetGame() then
+    loadTeamLoadout(1) -- Switch to loadout 1
+    print("Player is in game ID 14229762361. Stopping all other functions.")
+    return -- Stop execution here
 end
 
 -- Function to equip a unit by UUID
