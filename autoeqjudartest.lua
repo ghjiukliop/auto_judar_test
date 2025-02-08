@@ -44,10 +44,10 @@ local function equipUnit(uuid)
     end
 
     -- **Ensure Equipped Units Refresh Properly**
-    if ItemInventoryServiceClient and ItemInventoryServiceClient.refresh_equipped_units then
+    if ItemInventoryServiceClient and typeof(ItemInventoryServiceClient.refresh_equipped_units) == "function" then
         ItemInventoryServiceClient.refresh_equipped_units()
     else
-        warn("refresh_equipped_units function not available!")
+        warn("refresh_equipped_units function not available or not a function!")
     end
 end
 
