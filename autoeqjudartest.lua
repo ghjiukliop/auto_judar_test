@@ -36,6 +36,13 @@ local function equipUnit(uuid)
     else
         warn("equip_unit endpoint not found!")
     end
+
+    -- Ensure refresh_equipped_units exists before calling
+    if ItemInventoryServiceClient and ItemInventoryServiceClient.refresh_equipped_units then
+        ItemInventoryServiceClient:refresh_equipped_units()
+    else
+        warn("refresh_equipped_units function not found in ItemInventoryServiceClient!")
+    end
 end
 
 -- Function to get the units owned by the player
