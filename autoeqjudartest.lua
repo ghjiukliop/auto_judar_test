@@ -7,7 +7,9 @@ local UNIT_STORAGE = workspace:FindFirstChild("_UNITS")
 local GAME_ID = 14229762361
 local JUDAR_JSON_FILE = "JudarData.json"
 
--- Load services
+-- Load services with a wait to ensure they are available
+repeat task.wait() until ReplicatedStorage:FindFirstChild("endpoints") and ReplicatedStorage.endpoints.client_to_server
+
 local Loader = require(ReplicatedStorage.src.Loader)
 local ItemInventoryServiceClient = Loader.load_client_service(script, "ItemInventoryServiceClient")
 
@@ -18,20 +20,22 @@ end
 
 -- Function to load team loadout
 local function loadTeamLoadout(loadout)
-    ReplicatedStorage.endpoints.client_to_server.load_team_loadout:InvokeServer(tostring(loadout))
-    print("Switched to loadout:", loadout)
-end
-
--- Check if the player is in the target game
-if isInTargetGame() then
-    loadTeamLoadout(1) -- Switch to loadout 1
-    print("Player is in game ID 14229762361. Stopping all other functions.")
-    return -- Stop execution here
+    local loadoutEndpoint = ReplicatedStorage.endpoints.client_to_server:FindFirstChild("load_team_loadout")
+    if loadoutEndpoint then
+        loadoutEndpoint:InvokeServer(tostring(loadout))
+    else
+        warn("load_team_loadout endpoint not found!")
+    end
 end
 
 -- Function to equip a unit by UUID
 local function equipUnit(uuid)
-    ReplicatedStorage.endpoints.client_to_server.equip_unit:InvokeServer(uuid)
+    local equipEndpoint = ReplicatedStorage.endpoints.client_to_server:FindFirstChild("equip_unit")
+    if equipEndpoint then
+        equipEndpoint:InvokeServer(uuid)
+    else
+        warn("equip_unit endpoint not found!")
+    end
 end
 
 -- Function to get the units owned by the player
@@ -39,7 +43,7 @@ local function getUnitsOwner()
     return ItemInventoryServiceClient["session"]["collection"]["collection_profile_data"]["owned_units"]
 end
 
--- Function to log and return Judar's UUID and total takedowns
+-- Function to log Judar's UUID and total takedowns
 local function logJudarInfo()
     local judarData = {}
 
@@ -65,22 +69,22 @@ local function saveFilteredJudarData()
     createJsonFile(JUDAR_JSON_FILE, judarData)
 end
 
--- Function to get the best Judar (highest takedowns but below 10K)
+-- Function to fetch the best Judar UUID below 10K takedowns
 local function getBestJudarUUID()
     if isfile(JUDAR_JSON_FILE) then
         local data = readfile(JUDAR_JSON_FILE)
         local judarList = HttpService:JSONDecode(data) or {}
 
-        local bestJudar = nil
+        -- Sort to get the highest takedown Judar under 10K
+        table.sort(judarList, function(a, b)
+            return a.total_takedowns > b.total_takedowns
+        end)
+
         for _, judar in ipairs(judarList) do
             if judar.total_takedowns < 10000 then
-                if not bestJudar or judar.total_takedowns > bestJudar.total_takedowns then
-                    bestJudar = judar
-                end
+                return judar.uuid
             end
         end
-
-        return bestJudar and bestJudar.uuid or nil
     end
     return nil
 end
@@ -115,8 +119,13 @@ local function placeJudars(basePosition, judarUUID)
 
     for _, offset in ipairs(positions) do
         local spawnPosition = basePosition + offset
-        ReplicatedStorage.endpoints.client_to_server.spawn_unit:InvokeServer(judarUUID, CFrame.new(spawnPosition))
-        print("Placed Judar at:", spawnPosition)
+        local spawnEndpoint = ReplicatedStorage.endpoints.client_to_server:FindFirstChild("spawn_unit")
+        if spawnEndpoint then
+            spawnEndpoint:InvokeServer(judarUUID, CFrame.new(spawnPosition))
+            print("Placed Judar at:", spawnPosition)
+        else
+            warn("spawn_unit endpoint not found!")
+        end
         task.wait(1)
     end
 end
@@ -127,8 +136,13 @@ local function upgradeJudars()
         for i = 1, 3 do
             for _, unit in ipairs(UNIT_STORAGE:GetChildren()) do
                 if unit.Name == "judar" then
-                    ReplicatedStorage.endpoints.client_to_server.upgrade_unit_ingame:InvokeServer(unit)
-                    print("Upgraded Judar:", unit)
+                    local upgradeEndpoint = ReplicatedStorage.endpoints.client_to_server:FindFirstChild("upgrade_unit_ingame")
+                    if upgradeEndpoint then
+                        upgradeEndpoint:InvokeServer(unit)
+                        print("Upgraded Judar:", unit)
+                    else
+                        warn("upgrade_unit_ingame endpoint not found!")
+                    end
                 end
             end
             task.wait(1)
@@ -137,21 +151,32 @@ local function upgradeJudars()
 end
 
 -- Main execution logic
-loadTeamLoadout(6)
-print("Selected team loadout 6 for non-target game.")
-
-saveFilteredJudarData()
-
-local bestJudarUUID = getBestJudarUUID()
-if bestJudarUUID then
-    equipUnit(bestJudarUUID)
-    print("Equipped best Judar with UUID: " .. bestJudarUUID)
+if isInTargetGame() then
+    loadTeamLoadout(1)
+    print("Selected team loadout 1 for the target game.")
+    return -- **Stops all other functions from running**
 else
-    warn("No suitable Judar found!")
-    return
+    loadTeamLoadout(6)
+    print("Selected team loadout 6 for non-target game.")
+    
+    saveFilteredJudarData()
+
+    local bestJudarUUID = getBestJudarUUID()
+    if bestJudarUUID then
+        equipUnit(bestJudarUUID)
+        print("Equipped Judar with highest takedowns under 10K: " .. bestJudarUUID)
+    else
+        warn("No Judar found with takedowns below 10K!")
+    end
 end
 
 -- Place and upgrade Judars in a loop
+local bestJudarUUID = getBestJudarUUID()
+if not bestJudarUUID then
+    warn("No saved Judar UUID found in JSON!")
+    return
+end
+
 equipUnit(bestJudarUUID)
 print("Equipped Judar with UUID:", bestJudarUUID)
 
